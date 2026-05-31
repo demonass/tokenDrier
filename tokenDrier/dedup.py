@@ -21,11 +21,11 @@ class SimHashDeduplicator:
         tokens = self._tokenize(text)
         if not tokens:
             return 0
-        
+
         weights = {}
         for token in tokens:
             weights[token] = weights.get(token, 0) + 1
-        
+
         vector = [0] * self.hash_bits
         for token, weight in weights.items():
             h = self._hash_token(token)
@@ -35,12 +35,12 @@ class SimHashDeduplicator:
                     vector[i] += weight
                 else:
                     vector[i] -= weight
-        
+
         fingerprint = 0
         for i in range(self.hash_bits):
             if vector[i] > 0:
                 fingerprint |= (1 << i)
-        
+
         return fingerprint
     
     def _hamming_distance(self, fp1: int, fp2: int) -> int:
@@ -95,24 +95,30 @@ class OpenHumanDeduplicator:
     
     def _count_duplicates(self, sentences: List[str]) -> List[Tuple[str, int]]:
         counts: Dict[str, int] = {}
-        
+        fingerprint_cache: Dict[str, int] = {}
+
+        def get_fingerprint(text: str) -> int:
+            if text not in fingerprint_cache:
+                fingerprint_cache[text] = self.simhash.compute_fingerprint(text)
+            return fingerprint_cache[text]
+
         for sentence in sentences:
-            fingerprint = self.simhash.compute_fingerprint(sentence)
-            
+            fingerprint = get_fingerprint(sentence)
+
             found = False
             for existing_sentence in list(counts.keys()):
-                existing_fp = self.simhash.compute_fingerprint(existing_sentence)
+                existing_fp = get_fingerprint(existing_sentence)
                 distance = self.simhash._hamming_distance(fingerprint, existing_fp)
                 similarity = 1 - (distance / self.simhash.hash_bits)
-                
+
                 if similarity >= self.simhash.similarity_threshold:
                     counts[existing_sentence] += 1
                     found = True
                     break
-            
+
             if not found:
                 counts[sentence] = 1
-        
+
         return [(sentence, count) for sentence, count in counts.items()]
     
     def _merge_with_counts(self, sentences_with_counts: List[Tuple[str, int]]) -> List[str]:
